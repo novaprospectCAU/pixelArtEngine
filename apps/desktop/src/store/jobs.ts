@@ -1,4 +1,5 @@
 import { create } from "zustand";
+import { persist } from "zustand/middleware";
 import type { AssetType, Job, PixelConfig } from "@pixel/core";
 import type { JobEvent } from "../ipc";
 import { defaultPixelConfig } from "../constants";
@@ -80,188 +81,201 @@ export function formatLabel(inputPath: string): string {
   return basename(inputPath);
 }
 
-export const useJobStore = create<JobStore>((set, get) => ({
-  jobs: [],
-  selectedJobId: null,
-  editorMode: "global",
-  globalConfig: { ...defaultPixelConfig },
-  outputDir: "outputs",
-  concurrency: 2,
+export const useJobStore = create<JobStore>()(
+  persist(
+    (set, get) => ({
+      jobs: [],
+      selectedJobId: null,
+      editorMode: "global",
+      globalConfig: { ...defaultPixelConfig },
+      outputDir: "outputs",
+      concurrency: 2,
 
-  addPaths(paths) {
-    set((state) => {
-      const existing = new Set(state.jobs.map((job) => job.inputPath));
-      const next = [...state.jobs];
-      for (const filePath of paths) {
-        if (existing.has(filePath)) {
-          continue;
+      addPaths(paths) {
+        set((state) => {
+          const existing = new Set(state.jobs.map((job) => job.inputPath));
+          const next = [...state.jobs];
+          for (const filePath of paths) {
+            if (existing.has(filePath)) {
+              continue;
+            }
+            next.push(createJob(filePath, next.length));
+          }
+          return { jobs: normalizeOrder(next) };
+        });
+      },
+
+      removeJob(id) {
+        set((state) => {
+          const jobs = normalizeOrder(state.jobs.filter((job) => job.id !== id));
+          const selectedJobId = state.selectedJobId === id ? null : state.selectedJobId;
+          return { jobs, selectedJobId };
+        });
+      },
+
+      reorderJobs(dragId, targetId) {
+        if (dragId === targetId) {
+          return;
         }
-        next.push(createJob(filePath, next.length));
-      }
-      return { jobs: normalizeOrder(next) };
-    });
-  },
+        set((state) => {
+          const jobs = [...state.jobs];
+          const from = jobs.findIndex((job) => job.id === dragId);
+          const to = jobs.findIndex((job) => job.id === targetId);
+          if (from < 0 || to < 0) {
+            return { jobs: state.jobs };
+          }
+          const [moved] = jobs.splice(from, 1);
+          jobs.splice(to, 0, moved);
+          return { jobs: normalizeOrder(jobs) };
+        });
+      },
 
-  removeJob(id) {
-    set((state) => {
-      const jobs = normalizeOrder(state.jobs.filter((job) => job.id !== id));
-      const selectedJobId = state.selectedJobId === id ? null : state.selectedJobId;
-      return { jobs, selectedJobId };
-    });
-  },
+      toggleEnabled(id) {
+        set((state) => ({
+          jobs: state.jobs.map((job) =>
+            job.id === id ? { ...job, enabled: !job.enabled } : job
+          )
+        }));
+      },
 
-  reorderJobs(dragId, targetId) {
-    if (dragId === targetId) {
-      return;
-    }
-    set((state) => {
-      const jobs = [...state.jobs];
-      const from = jobs.findIndex((job) => job.id === dragId);
-      const to = jobs.findIndex((job) => job.id === targetId);
-      if (from < 0 || to < 0) {
-        return { jobs: state.jobs };
-      }
-      const [moved] = jobs.splice(from, 1);
-      jobs.splice(to, 0, moved);
-      return { jobs: normalizeOrder(jobs) };
-    });
-  },
+      selectJob(id) {
+        set({ selectedJobId: id });
+      },
 
-  toggleEnabled(id) {
-    set((state) => ({
-      jobs: state.jobs.map((job) =>
-        job.id === id ? { ...job, enabled: !job.enabled } : job
-      )
-    }));
-  },
+      setEditorMode(mode) {
+        set((state) => {
+          if (mode === "local" && state.selectedJobId) {
+            return {
+              editorMode: mode,
+              jobs: state.jobs.map((job) => {
+                if (job.id !== state.selectedJobId) {
+                  return job;
+                }
+                return ensureLocalConfig({ ...job, configMode: "local" });
+              })
+            };
+          }
+          return { editorMode: mode };
+        });
+      },
 
-  selectJob(id) {
-    set({ selectedJobId: id });
-  },
+      setOutputDir(outputDir) {
+        set({ outputDir });
+      },
 
-  setEditorMode(mode) {
-    set((state) => {
-      if (mode === "local" && state.selectedJobId) {
-        return {
-          editorMode: mode,
+      setConcurrency(concurrency) {
+        set({ concurrency: Math.max(1, Math.floor(concurrency)) });
+      },
+
+      setJobConfigMode(id, mode) {
+        set((state) => ({
           jobs: state.jobs.map((job) => {
-            if (job.id !== state.selectedJobId) {
+            if (job.id !== id) {
               return job;
             }
-            return ensureLocalConfig({ ...job, configMode: "local" });
+            const nextJob = { ...job, configMode: mode };
+            return mode === "local" ? ensureLocalConfig(nextJob) : nextJob;
           })
-        };
+        }));
+      },
+
+      updateGlobalConfig(patch) {
+        set((state) => ({
+          globalConfig: {
+            ...state.globalConfig,
+            ...patch
+          }
+        }));
+      },
+
+      updateSelectedLocalConfig(patch) {
+        const selectedJobId = get().selectedJobId;
+        if (!selectedJobId) {
+          return;
+        }
+        set((state) => ({
+          jobs: state.jobs.map((job) => {
+            if (job.id !== selectedJobId) {
+              return job;
+            }
+            const ensured = ensureLocalConfig({ ...job, configMode: "local" });
+            const nextLocalConfig: PixelConfig = {
+              ...defaultPixelConfig,
+              ...ensured.localConfig,
+              ...patch
+            };
+            return {
+              ...ensured,
+              localConfig: nextLocalConfig
+            };
+          })
+        }));
+      },
+
+      markQueued(jobIds) {
+        const target = new Set(jobIds);
+        set((state) => ({
+          jobs: state.jobs.map((job) => {
+            if (!target.has(job.id)) {
+              return job;
+            }
+            return {
+              ...job,
+              status: "queued",
+              progress: 0,
+              errorMessage: undefined
+            };
+          })
+        }));
+      },
+
+      applyEvent(event) {
+        if (event.type === "idle") {
+          return;
+        }
+
+        set((state) => ({
+          jobs: state.jobs.map((job) => {
+            if (job.id !== event.jobId) {
+              return job;
+            }
+
+            switch (event.type) {
+              case "queued":
+                return { ...job, status: "queued", progress: 0, errorMessage: undefined };
+              case "start":
+                return { ...job, status: "processing", progress: Math.max(0.01, job.progress) };
+              case "progress":
+                return { ...job, status: "processing", progress: event.progress };
+              case "done":
+                return { ...job, status: "done", progress: 1, output: event.result, errorMessage: undefined };
+              case "error":
+                return { ...job, status: "error", errorMessage: event.message };
+              case "canceled":
+                return { ...job, status: "canceled", errorMessage: undefined };
+              default:
+                return job;
+            }
+          })
+        }));
+      },
+
+      clearCompleted() {
+        set((state) => ({
+          jobs: normalizeOrder(
+            state.jobs.filter((job) => !["done", "error", "canceled"].includes(job.status))
+          )
+        }));
       }
-      return { editorMode: mode };
-    });
-  },
-
-  setOutputDir(outputDir) {
-    set({ outputDir });
-  },
-
-  setConcurrency(concurrency) {
-    set({ concurrency: Math.max(1, Math.floor(concurrency)) });
-  },
-
-  setJobConfigMode(id, mode) {
-    set((state) => ({
-      jobs: state.jobs.map((job) => {
-        if (job.id !== id) {
-          return job;
-        }
-        const nextJob = { ...job, configMode: mode };
-        return mode === "local" ? ensureLocalConfig(nextJob) : nextJob;
+    }),
+    {
+      name: "pixel-desktop-settings",
+      partialize: (state) => ({
+        editorMode: state.editorMode,
+        globalConfig: state.globalConfig,
+        outputDir: state.outputDir,
+        concurrency: state.concurrency
       })
-    }));
-  },
-
-  updateGlobalConfig(patch) {
-    set((state) => ({
-      globalConfig: {
-        ...state.globalConfig,
-        ...patch
-      }
-    }));
-  },
-
-  updateSelectedLocalConfig(patch) {
-    const selectedJobId = get().selectedJobId;
-    if (!selectedJobId) {
-      return;
     }
-    set((state) => ({
-      jobs: state.jobs.map((job) => {
-        if (job.id !== selectedJobId) {
-          return job;
-        }
-        const ensured = ensureLocalConfig({ ...job, configMode: "local" });
-        const nextLocalConfig: PixelConfig = {
-          ...defaultPixelConfig,
-          ...ensured.localConfig,
-          ...patch
-        };
-        return {
-          ...ensured,
-          localConfig: nextLocalConfig
-        };
-      })
-    }));
-  },
-
-  markQueued(jobIds) {
-    const target = new Set(jobIds);
-    set((state) => ({
-      jobs: state.jobs.map((job) => {
-        if (!target.has(job.id)) {
-          return job;
-        }
-        return {
-          ...job,
-          status: "queued",
-          progress: 0,
-          errorMessage: undefined
-        };
-      })
-    }));
-  },
-
-  applyEvent(event) {
-    if (event.type === "idle") {
-      return;
-    }
-
-    set((state) => ({
-      jobs: state.jobs.map((job) => {
-        if (job.id !== event.jobId) {
-          return job;
-        }
-
-        switch (event.type) {
-          case "queued":
-            return { ...job, status: "queued", progress: 0, errorMessage: undefined };
-          case "start":
-            return { ...job, status: "processing", progress: Math.max(0.01, job.progress) };
-          case "progress":
-            return { ...job, status: "processing", progress: event.progress };
-          case "done":
-            return { ...job, status: "done", progress: 1, output: event.result, errorMessage: undefined };
-          case "error":
-            return { ...job, status: "error", errorMessage: event.message };
-          case "canceled":
-            return { ...job, status: "canceled", errorMessage: undefined };
-          default:
-            return job;
-        }
-      })
-    }));
-  },
-
-  clearCompleted() {
-    set((state) => ({
-      jobs: normalizeOrder(
-        state.jobs.filter((job) => !["done", "error", "canceled"].includes(job.status))
-      )
-    }));
-  }
-}));
+  )
+);

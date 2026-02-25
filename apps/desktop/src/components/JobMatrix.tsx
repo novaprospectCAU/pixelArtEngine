@@ -15,6 +15,70 @@ function extractDroppedPaths(event: DragEvent): string[] {
     .filter((value): value is string => Boolean(value));
 }
 
+function toFileUrl(filePath: string): string {
+  const normalized = filePath.replace(/\\/g, "/");
+  if (/^[A-Za-z]:\//.test(normalized)) {
+    return encodeURI(`file:///${normalized}`);
+  }
+  return encodeURI(`file://${normalized}`);
+}
+
+function InputPreview({ job }: { job: Job }) {
+  const src = toFileUrl(job.inputPath);
+
+  if (job.type === "video") {
+    return (
+      <video
+        src={src}
+        className="h-16 w-24 rounded border border-slate-300 object-cover"
+        muted
+        loop
+        playsInline
+        autoPlay
+      />
+    );
+  }
+
+  return (
+    <img
+      src={src}
+      alt="input preview"
+      className="h-16 w-16 rounded border border-slate-300 object-cover"
+    />
+  );
+}
+
+function OutputPreview({ job }: { job: Job }) {
+  if (!job.output?.previewUrl) {
+    return (
+      <div className="rounded-md border border-dashed border-slate-300 bg-slate-50 p-3 text-xs text-slate-500">
+        Output preview not available yet
+      </div>
+    );
+  }
+
+  if (job.type === "video") {
+    return (
+      <video
+        src={job.output.previewUrl}
+        className="h-20 w-28 rounded border border-slate-300 object-cover"
+        muted
+        loop
+        playsInline
+        autoPlay
+      />
+    );
+  }
+
+  return (
+    <img
+      src={job.output.previewUrl}
+      alt="output preview"
+      className="h-20 w-20 rounded border border-slate-300 object-cover"
+    />
+  );
+}
+
 type JobMatrixProps = {
   jobs: Job[];
   selectedJobId: string | null;
@@ -106,9 +170,14 @@ export function JobMatrix({
               />
 
               <button className="flex-1 text-left" type="button" onClick={() => onSelect(job.id)}>
-                <div className="text-sm font-medium text-slate-800">{formatLabel(job.inputPath)}</div>
-                <div className="mt-1 text-xs text-slate-500">
-                  {job.type} | {statusLabel(job)} | {job.configMode}
+                <div className="flex items-start gap-3">
+                  <InputPreview job={job} />
+                  <div className="min-w-0">
+                    <div className="truncate text-sm font-medium text-slate-800">{formatLabel(job.inputPath)}</div>
+                    <div className="mt-1 text-xs text-slate-500">
+                      {job.type} | {statusLabel(job)} | {job.configMode}
+                    </div>
+                  </div>
                 </div>
               </button>
 
@@ -147,23 +216,7 @@ export function JobMatrix({
 
               {job.status === "done" && job.output && (
                 <div className="space-y-1">
-                  {job.output.previewUrl && job.type !== "video" && (
-                    <img
-                      src={job.output.previewUrl}
-                      alt="result preview"
-                      className="mb-2 h-20 w-20 rounded border border-slate-300 object-cover"
-                    />
-                  )}
-                  {job.output.previewUrl && job.type === "video" && (
-                    <video
-                      src={job.output.previewUrl}
-                      className="mb-2 h-20 w-28 rounded border border-slate-300 object-cover"
-                      muted
-                      loop
-                      playsInline
-                      autoPlay
-                    />
-                  )}
+                  <OutputPreview job={job} />
                   <div className="text-xs text-slate-600">Done</div>
                   <div className="truncate text-xs text-slate-700" title={job.output.primaryPath}>
                     {job.output.primaryPath}

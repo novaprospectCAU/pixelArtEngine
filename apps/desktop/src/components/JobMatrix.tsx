@@ -16,7 +16,7 @@ function extractDroppedPaths(event: DragEvent): string[] {
 }
 
 function toLocalFileUrl(filePath: string): string {
-  return `local-file://${encodeURIComponent(filePath)}`;
+  return `local-file://open?path=${encodeURIComponent(filePath)}`;
 }
 
 function InputPreview({ job }: { job: Job }) {

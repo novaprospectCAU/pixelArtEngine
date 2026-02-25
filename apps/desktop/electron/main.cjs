@@ -70,8 +70,21 @@ function createWindow() {
 app.whenReady().then(() => {
   protocol.handle("local-file", (request) => {
     try {
-      const encodedPath = request.url.replace("local-file://", "");
-      const decodedPath = decodeURIComponent(encodedPath);
+      const url = new URL(request.url);
+      let decodedPath = url.searchParams.get("path");
+
+      if (!decodedPath && url.pathname && url.pathname !== "/") {
+        decodedPath = decodeURIComponent(url.pathname);
+      }
+
+      if (!decodedPath && url.host) {
+        decodedPath = decodeURIComponent(url.host);
+      }
+
+      if (!decodedPath) {
+        return new Response("Missing path", { status: 400 });
+      }
+
       const fileUrl = pathToFileURL(decodedPath).toString();
       return net.fetch(fileUrl);
     } catch {

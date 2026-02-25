@@ -1,0 +1,16 @@
+{
+  "name": "@pixel/cli",
+  "version": "0.1.0",
+  "private": true,
+  "bin": {
+    "pixel-cli": "src/index.cjs"
+  },
+  "scripts": {
+    "build:deps": "npm run build -w @pixel/core",
+    "dev": "npm run build:deps && node src/index.cjs",
+    "build": "npm run build:deps"
+  },
+  "dependencies": {
+    "@pixel/core": "file:../../packages/core"
+  }
+}

@@ -1,0 +1,24 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+body {
+  margin: 0;
+  font-family: "Avenir Next", "Segoe UI", sans-serif;
+}
+
+.btn {
+  @apply rounded-md border border-slate-300 bg-white px-3 py-1.5 text-sm text-slate-800 transition hover:border-slate-400;
+}
+
+.btn-accent {
+  @apply border-emerald-600 bg-emerald-600 text-white hover:border-emerald-700 hover:bg-emerald-700;
+}
+
+.btn-danger {
+  @apply border-rose-600 bg-rose-600 text-white hover:border-rose-700 hover:bg-rose-700;
+}
+
+.btn-sm {
+  @apply px-2 py-1 text-xs;
+}

@@ -10,7 +10,8 @@
     "dev:desktop": "npm run dev -w @pixel/desktop",
     "dev:cli": "npm run dev -w @pixel/cli",
     "build": "npm run build --workspaces --if-present",
-    "typecheck": "npm run typecheck --workspaces --if-present"
+    "typecheck": "npm run typecheck --workspaces --if-present",
+    "test": "npm run build && node --test tests/*.test.cjs"
   },
   "devDependencies": {
     "typescript": "^5.7.3"

@@ -35,6 +35,7 @@ npm run dev:cli -- ./assets --watch --out ./outputs
 - `npm run dev:cli -- <input-file> [--out <output-dir>]`
 - `npm run typecheck`
 - `npm run build`
+- `npm run test`
 
 ## Current P0 Status
 - Monorepo and package boundaries are set.

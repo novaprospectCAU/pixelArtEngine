@@ -142,6 +142,17 @@ export function runFfmpeg(args: string[], options: FfmpegOptions = {}): Promise<
 
     let settled = false;
     let stderrBuffer = "";
+    const stderrTail: string[] = [];
+
+    const rememberStderr = (line: string) => {
+      if (!line.trim()) {
+        return;
+      }
+      stderrTail.push(line.trim());
+      if (stderrTail.length > 10) {
+        stderrTail.shift();
+      }
+    };
 
     const complete = (err?: Error) => {
       if (settled) {
@@ -177,6 +188,7 @@ export function runFfmpeg(args: string[], options: FfmpegOptions = {}): Promise<
       const { lines, rest } = splitLines(stderrBuffer);
       stderrBuffer = rest;
       for (const line of lines) {
+        rememberStderr(line);
         options.onStderrLine?.(line);
       }
     });
@@ -187,6 +199,7 @@ export function runFfmpeg(args: string[], options: FfmpegOptions = {}): Promise<
 
     child.on("exit", (code, signal) => {
       if (stderrBuffer.trim().length > 0) {
+        rememberStderr(stderrBuffer.trim());
         options.onStderrLine?.(stderrBuffer.trim());
       }
 
@@ -201,7 +214,8 @@ export function runFfmpeg(args: string[], options: FfmpegOptions = {}): Promise<
       }
 
       const reason = signal ? `signal ${signal}` : `code ${code}`;
-      complete(new Error(`ffmpeg exited with ${reason}`));
+      const details = stderrTail.length > 0 ? ` | ${stderrTail.join(" | ")}` : "";
+      complete(new Error(`ffmpeg exited with ${reason}${details}`));
     });
   });
 }

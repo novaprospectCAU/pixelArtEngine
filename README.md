@@ -20,6 +20,11 @@ CLI (single file):
 npm run dev:cli -- ./sample/input.png --out ./outputs
 ```
 
+CLI (batch files/folders):
+```bash
+npm run dev:cli -- ./assets ./clips --out ./outputs --concurrency 2 --grid 16 --scale 4
+```
+
 ## Commands
 - `npm run dev:desktop`
 - `npm run dev:cli -- <input-file> [--out <output-dir>]`

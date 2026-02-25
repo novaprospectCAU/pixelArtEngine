@@ -1,10 +1,24 @@
 const path = require("node:path");
+const { pathToFileURL } = require("node:url");
 const { app, BrowserWindow, dialog, ipcMain, shell } = require("electron");
+const { protocol, net } = require("electron");
 const { defaultPixelConfig, expandInputPaths } = require("@pixel/core");
 const { convertAssetWithFfmpeg } = require("@pixel/ffmpeg");
 const { JobQueue } = require("@pixel/queue");
 
 let mainWindow = null;
+
+protocol.registerSchemesAsPrivileged([
+  {
+    scheme: "local-file",
+    privileges: {
+      standard: true,
+      secure: true,
+      supportFetchAPI: true,
+      stream: true
+    }
+  }
+]);
 
 const queue = new JobQueue(async ({ payload, signal, reportProgress }) => {
   const config = {
@@ -54,6 +68,17 @@ function createWindow() {
 }
 
 app.whenReady().then(() => {
+  protocol.handle("local-file", (request) => {
+    try {
+      const encodedPath = request.url.replace("local-file://", "");
+      const decodedPath = decodeURIComponent(encodedPath);
+      const fileUrl = pathToFileURL(decodedPath).toString();
+      return net.fetch(fileUrl);
+    } catch {
+      return new Response("Invalid local-file URL", { status: 400 });
+    }
+  });
+
   createWindow();
 
   app.on("activate", () => {

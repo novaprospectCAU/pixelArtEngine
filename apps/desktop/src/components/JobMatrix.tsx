@@ -15,16 +15,12 @@ function extractDroppedPaths(event: DragEvent): string[] {
     .filter((value): value is string => Boolean(value));
 }
 
-function toFileUrl(filePath: string): string {
-  const normalized = filePath.replace(/\\/g, "/");
-  if (/^[A-Za-z]:\//.test(normalized)) {
-    return encodeURI(`file:///${normalized}`);
-  }
-  return encodeURI(`file://${normalized}`);
+function toLocalFileUrl(filePath: string): string {
+  return `local-file://${encodeURIComponent(filePath)}`;
 }
 
 function InputPreview({ job }: { job: Job }) {
-  const src = toFileUrl(job.inputPath);
+  const src = toLocalFileUrl(job.inputPath);
 
   if (job.type === "video") {
     return (
@@ -57,10 +53,12 @@ function OutputPreview({ job }: { job: Job }) {
     );
   }
 
+  const src = toLocalFileUrl(job.output.primaryPath);
+
   if (job.type === "video") {
     return (
       <video
-        src={job.output.previewUrl}
+        src={src}
         className="h-20 w-28 rounded border border-slate-300 object-cover"
         muted
         loop
@@ -72,7 +70,7 @@ function OutputPreview({ job }: { job: Job }) {
 
   return (
     <img
-      src={job.output.previewUrl}
+      src={src}
       alt="output preview"
       className="h-20 w-20 rounded border border-slate-300 object-cover"
     />

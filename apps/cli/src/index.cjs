@@ -4,7 +4,8 @@ const { randomUUID } = require("node:crypto");
 const {
   detectAssetType,
   defaultPixelConfig,
-  expandInputPaths
+  expandInputPaths,
+  isSupportedAssetPath
 } = require("@pixel/core");
 const { convertAssetWithFfmpeg } = require("@pixel/ffmpeg");
 const { JobQueue } = require("@pixel/queue");
@@ -16,6 +17,7 @@ function printUsage() {
 Examples:
   pixel-cli ./assets/hero.png --out ./outputs
   pixel-cli ./assets ./clips/intro.mp4 --concurrency 2 --grid 16 --scale 4 --format png
+  pixel-cli ./assets --watch --out ./outputs
 
 Options:
   -o, --out <dir>            Output directory (default: ./outputs)
@@ -30,6 +32,7 @@ Options:
   --format <png|svg|mp4|webm>
   --spritesheet              Export video spritesheet + metadata
   --alpha-mask               Export video alpha mask
+  --watch                    Watch inputs and auto-convert changes
   -h, --help                 Show this help
 `);
 }
@@ -48,12 +51,18 @@ function parseArgs(argv) {
   let concurrency = 2;
   const configPatch = {};
   let help = false;
+  let watch = false;
 
   for (let i = 0; i < argv.length; i += 1) {
     const arg = argv[i];
 
     if (arg === "-h" || arg === "--help") {
       help = true;
+      continue;
+    }
+
+    if (arg === "--watch") {
+      watch = true;
       continue;
     }
 
@@ -166,6 +175,7 @@ function parseArgs(argv) {
 
   return {
     help,
+    watch,
     inputs,
     outputDir,
     concurrency,
@@ -176,8 +186,12 @@ function parseArgs(argv) {
   };
 }
 
-async function runBatch(files, options) {
+function createBatchRunner(options) {
   const progressByJob = new Map();
+  const filesById = new Map();
+  const activeByPath = new Set();
+  const idleResolvers = [];
+
   let doneCount = 0;
   let errorCount = 0;
 
@@ -192,55 +206,177 @@ async function runBatch(files, options) {
     });
   }, options.concurrency);
 
-  const completed = new Promise((resolve) => {
-    queue.onEvent((event) => {
-      if (event.type === "start") {
-        const file = files.find((item) => item.id === event.jobId);
-        if (file) {
-          console.log(`[start] ${file.inputPath}`);
+  function settleIdleIfNeeded() {
+    if (activeByPath.size !== 0) {
+      return;
+    }
+
+    while (idleResolvers.length > 0) {
+      const resolve = idleResolvers.shift();
+      resolve();
+    }
+  }
+
+  queue.onEvent((event) => {
+    const trackedFile = "jobId" in event ? filesById.get(event.jobId) : undefined;
+
+    if (event.type === "start") {
+      if (trackedFile) {
+        console.log(`[start] ${trackedFile.inputPath}`);
+      }
+      return;
+    }
+
+    if (event.type === "progress") {
+      const lastPercent = progressByJob.get(event.jobId) ?? 0;
+      const nextPercent = Math.round(event.progress * 100);
+      if (nextPercent >= lastPercent + 25 || nextPercent === 100) {
+        progressByJob.set(event.jobId, nextPercent);
+        if (trackedFile) {
+          console.log(`[progress] ${nextPercent}% ${path.basename(trackedFile.inputPath)}`);
         }
       }
+      return;
+    }
 
-      if (event.type === "progress") {
-        const lastPercent = progressByJob.get(event.jobId) ?? 0;
-        const nextPercent = Math.round(event.progress * 100);
-        if (nextPercent >= lastPercent + 25 || nextPercent === 100) {
-          progressByJob.set(event.jobId, nextPercent);
-          const file = files.find((item) => item.id === event.jobId);
-          if (file) {
-            console.log(`[progress] ${nextPercent}% ${path.basename(file.inputPath)}`);
-          }
-        }
+    if (event.type === "done" || event.type === "error" || event.type === "canceled") {
+      if (trackedFile) {
+        activeByPath.delete(trackedFile.inputPath);
+        filesById.delete(event.jobId);
       }
+    }
 
-      if (event.type === "done") {
-        doneCount += 1;
-        console.log(`[done] ${event.result.primaryPath}`);
-      }
+    if (event.type === "done") {
+      doneCount += 1;
+      console.log(`[done] ${event.result.primaryPath}`);
+      settleIdleIfNeeded();
+      return;
+    }
 
-      if (event.type === "error") {
-        errorCount += 1;
-        const file = files.find((item) => item.id === event.jobId);
-        console.error(`[error] ${file ? file.inputPath : event.jobId}: ${event.message}`);
-      }
+    if (event.type === "error") {
+      errorCount += 1;
+      console.error(`[error] ${trackedFile ? trackedFile.inputPath : event.jobId}: ${event.message}`);
+      settleIdleIfNeeded();
+      return;
+    }
 
-      if (event.type === "idle") {
-        resolve({ doneCount, errorCount });
-      }
-    });
+    if (event.type === "canceled") {
+      settleIdleIfNeeded();
+      return;
+    }
+
+    if (event.type === "idle") {
+      settleIdleIfNeeded();
+    }
   });
 
-  queue.enqueue(
-    files.map((file) => ({
-      id: file.id,
-      payload: {
-        inputPath: file.inputPath,
-        type: file.type
-      }
-    }))
-  );
+  return {
+    enqueuePaths(inputPaths) {
+      const items = [];
 
-  return completed;
+      for (const inputPath of inputPaths) {
+        const resolved = path.resolve(inputPath);
+        if (activeByPath.has(resolved) || !isSupportedAssetPath(resolved)) {
+          continue;
+        }
+
+        activeByPath.add(resolved);
+        const id = randomUUID();
+        const item = {
+          id,
+          inputPath: resolved,
+          type: detectAssetType(resolved)
+        };
+        filesById.set(id, item);
+        items.push(item);
+      }
+
+      if (items.length === 0) {
+        return 0;
+      }
+
+      queue.enqueue(
+        items.map((item) => ({
+          id: item.id,
+          payload: {
+            inputPath: item.inputPath,
+            type: item.type
+          }
+        }))
+      );
+
+      return items.length;
+    },
+
+    waitForIdle() {
+      if (activeByPath.size === 0) {
+        return Promise.resolve();
+      }
+
+      return new Promise((resolve) => {
+        idleResolvers.push(resolve);
+      });
+    },
+
+    getSummary() {
+      return {
+        doneCount,
+        errorCount,
+        activeCount: activeByPath.size
+      };
+    }
+  };
+}
+
+async function startWatchMode(options, runner) {
+  const chokidar = require("chokidar");
+
+  console.log("Watch mode enabled. Press Ctrl+C to stop.");
+
+  const watcher = chokidar.watch(options.inputs, {
+    ignoreInitial: true,
+    awaitWriteFinish: {
+      stabilityThreshold: 250,
+      pollInterval: 100
+    }
+  });
+
+  const queueChangedPath = (changedPath) => {
+    const resolved = path.resolve(changedPath);
+    const count = runner.enqueuePaths([resolved]);
+    if (count > 0) {
+      console.log(`[watch] queued ${resolved}`);
+    }
+  };
+
+  watcher.on("add", queueChangedPath);
+  watcher.on("change", queueChangedPath);
+  watcher.on("error", (error) => {
+    console.error(`[watch:error] ${error instanceof Error ? error.message : String(error)}`);
+  });
+
+  let stopping = false;
+  const stop = async (code) => {
+    if (stopping) {
+      return;
+    }
+    stopping = true;
+
+    console.log("Stopping watch mode...");
+    await watcher.close();
+    await runner.waitForIdle();
+
+    const summary = runner.getSummary();
+    console.log(`Summary: done=${summary.doneCount}, errors=${summary.errorCount}`);
+    process.exit(code || (summary.errorCount > 0 ? 1 : 0));
+  };
+
+  process.on("SIGINT", () => {
+    void stop(0);
+  });
+  process.on("SIGTERM", () => {
+    void stop(0);
+  });
 }
 
 async function main() {
@@ -258,17 +394,20 @@ async function main() {
     return;
   }
 
-  const files = expandedPaths.map((inputPath) => ({
-    id: randomUUID(),
-    inputPath,
-    type: detectAssetType(inputPath)
-  }));
+  console.log(`Discovered ${expandedPaths.length} file(s). Output: ${options.outputDir}`);
+  const runner = createBatchRunner(options);
+  runner.enqueuePaths(expandedPaths);
 
-  console.log(`Discovered ${files.length} file(s). Output: ${options.outputDir}`);
-  const { doneCount, errorCount } = await runBatch(files, options);
+  if (options.watch) {
+    await startWatchMode(options, runner);
+    return;
+  }
 
-  console.log(`Summary: done=${doneCount}, errors=${errorCount}, total=${files.length}`);
-  if (errorCount > 0) {
+  await runner.waitForIdle();
+  const summary = runner.getSummary();
+  console.log(`Summary: done=${summary.doneCount}, errors=${summary.errorCount}, total=${expandedPaths.length}`);
+
+  if (summary.errorCount > 0) {
     process.exitCode = 1;
   }
 }

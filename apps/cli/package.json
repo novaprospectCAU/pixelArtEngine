@@ -13,6 +13,7 @@
   "dependencies": {
     "@pixel/core": "file:../../packages/core",
     "@pixel/ffmpeg": "file:../../packages/ffmpeg",
-    "@pixel/queue": "file:../../packages/queue"
+    "@pixel/queue": "file:../../packages/queue",
+    "chokidar": "^4.0.3"
   }
 }

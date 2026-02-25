@@ -25,6 +25,11 @@ CLI (batch files/folders):
 npm run dev:cli -- ./assets ./clips --out ./outputs --concurrency 2 --grid 16 --scale 4
 ```
 
+CLI (watch mode):
+```bash
+npm run dev:cli -- ./assets --watch --out ./outputs
+```
+
 ## Commands
 - `npm run dev:desktop`
 - `npm run dev:cli -- <input-file> [--out <output-dir>]`

@@ -22,10 +22,22 @@ export type ConvertWithFfmpegOptions = ConvertRequest & {
   ffprobeBin?: string;
 };
 
+type FilterSpec =
+  | {
+      args: ["-vf", string];
+    }
+  | {
+      args: ["-filter_complex", string, "-map", "[vout]"];
+    };
+
 function abortError(): Error {
   const error = new Error("Conversion canceled");
   error.name = "AbortError";
   return error;
+}
+
+function clamp(value: number, min: number, max: number): number {
+  return Math.max(min, Math.min(max, value));
 }
 
 function formatOutputByType(type: ConvertRequest["type"], config: PixelConfig): "png" | "svg" | "mp4" | "webm" {
@@ -43,11 +55,22 @@ function formatOutputByType(type: ConvertRequest["type"], config: PixelConfig): 
   return "png";
 }
 
-function createPixelFilter(config: PixelConfig): string {
-  const grid = Math.max(1, Math.floor(config.grid || 32));
-  const scale = Math.max(1, Math.floor(config.scale || 1));
+function ditherMode(dither: PixelConfig["dither"]): string {
+  if (dither === "floyd") {
+    return "floyd_steinberg";
+  }
+  if (dither === "bayer") {
+    return "bayer:bayer_scale=2";
+  }
+  return "none";
+}
 
-  const parts = [
+function createBaseFilter(config: PixelConfig, isVideo: boolean): string {
+  const grid = clamp(Math.floor(config.grid || 32), 1, 512);
+  const scale = clamp(Math.floor(config.scale || 1), 1, 16);
+  const alphaThreshold = clamp(Math.floor(config.alphaThreshold || 0), 0, 255);
+
+  const parts: string[] = [
     `scale=max(1\\,trunc(iw/${grid})):max(1\\,trunc(ih/${grid})):flags=neighbor`
   ];
 
@@ -55,11 +78,44 @@ function createPixelFilter(config: PixelConfig): string {
     parts.push(`scale=iw*${scale}:ih*${scale}:flags=neighbor`);
   }
 
-  if (config.trim) {
+  if (alphaThreshold > 0) {
+    parts.push("format=rgba");
+    parts.push(`lut=a='if(lt(val\\,${alphaThreshold})\\,0\\,255)'`);
+  }
+
+  // ffmpeg trim by transparency needs probe+2pass. Keep deterministic even-dimension crop for codecs.
+  if (config.trim || isVideo) {
     parts.push("crop=iw-mod(iw\\,2):ih-mod(ih\\,2)");
   }
 
+  if (isVideo) {
+    const fps = clamp(Math.floor(config.fps || 24), 1, 120);
+    parts.push(`fps=${fps}`);
+    parts.push("pad=ceil(iw/2)*2:ceil(ih/2)*2");
+  }
+
   return parts.join(",");
+}
+
+function buildFilterSpec(config: PixelConfig, isVideo: boolean): FilterSpec {
+  const baseFilter = createBaseFilter(config, isVideo);
+  const palette = clamp(Math.floor(config.palette || 256), 2, 256);
+
+  if (palette >= 256) {
+    return {
+      args: ["-vf", baseFilter]
+    };
+  }
+
+  const complexFilter = [
+    `[0:v]${baseFilter},split=2[pix][pal]`,
+    `[pal]palettegen=max_colors=${palette}:reserve_transparent=1[palette]`,
+    `[pix][palette]paletteuse=dither=${ditherMode(config.dither)}[vout]`
+  ].join(";");
+
+  return {
+    args: ["-filter_complex", complexFilter, "-map", "[vout]"]
+  };
 }
 
 function splitLines(buffer: string): { lines: string[]; rest: string } {
@@ -207,20 +263,16 @@ export async function convertAssetWithFfmpeg(request: ConvertWithFfmpegOptions):
     };
   }
 
-  const pixelFilter = createPixelFilter(request.config);
-
   if (request.type === "video") {
     const durationSeconds = await probeDurationSeconds(inputPath, { ffprobeBin }).catch(() => 0);
-    const fps = Math.max(1, Math.floor(request.config.fps || 24));
-    const vf = `${pixelFilter},fps=${fps},pad=ceil(iw/2)*2:ceil(ih/2)*2`;
+    const filterSpec = buildFilterSpec(request.config, true);
 
     await runFfmpeg(
       [
         "-y",
         "-i",
         inputPath,
-        "-vf",
-        vf,
+        ...filterSpec.args,
         ...videoCodecArgs(outputFormat === "webm" ? "webm" : "mp4"),
         "-progress",
         "pipe:2",
@@ -232,10 +284,7 @@ export async function convertAssetWithFfmpeg(request: ConvertWithFfmpegOptions):
         signal,
         onStderrLine: (line) => {
           const outTimeMs = parseOutTimeMs(line);
-          if (outTimeMs === null) {
-            return;
-          }
-          if (durationSeconds <= 0) {
+          if (outTimeMs === null || durationSeconds <= 0) {
             return;
           }
 
@@ -248,6 +297,7 @@ export async function convertAssetWithFfmpeg(request: ConvertWithFfmpegOptions):
     onProgress?.(1);
 
     if (request.config.spritesheet) {
+      const fps = clamp(Math.floor(request.config.fps || 24), 1, 120);
       const spritesheetPath = path.join(outputDir, `${base}_spritesheet.png`);
       const metaPath = path.join(outputDir, `${base}_spritesheet.json`);
 
@@ -282,8 +332,9 @@ export async function convertAssetWithFfmpeg(request: ConvertWithFfmpegOptions):
     };
   }
 
+  const filterSpec = buildFilterSpec(request.config, false);
   onProgress?.(0.1);
-  await runFfmpeg(["-y", "-i", inputPath, "-vf", pixelFilter, primaryPath], {
+  await runFfmpeg(["-y", "-i", inputPath, ...filterSpec.args, primaryPath], {
     ffmpegBin,
     signal
   });

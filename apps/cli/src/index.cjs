@@ -28,6 +28,7 @@ Options:
   --trim                     Enable trim
   --outline                  Enable outline
   --scale <n>                Upscale factor
+  --alpha-threshold <0-255>  Alpha cutoff threshold
   --fps <n>                  FPS for video output
   --format <png|svg|mp4|webm>
   --spritesheet              Export video spritesheet + metadata
@@ -132,6 +133,16 @@ function parseArgs(argv) {
         throw new Error(`${arg} requires a value`);
       }
       configPatch.fps = Math.max(1, Math.floor(parseNumberFlag(value, arg)));
+      i += 1;
+      continue;
+    }
+
+    if (arg === "--alpha-threshold") {
+      const value = argv[i + 1];
+      if (!value) {
+        throw new Error(`${arg} requires a value`);
+      }
+      configPatch.alphaThreshold = Math.max(0, Math.min(255, Math.floor(parseNumberFlag(value, arg))));
       i += 1;
       continue;
     }

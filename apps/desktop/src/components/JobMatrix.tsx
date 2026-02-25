@@ -128,7 +128,9 @@ export function JobMatrix({
 
             <div className="px-3 py-3">
               {(job.status === "idle" || job.status === "queued") && (
-                <div className="text-xs text-slate-500">Waiting for conversion...</div>
+                <div className="rounded-md border border-dashed border-slate-300 bg-slate-50 p-3 text-xs text-slate-500">
+                  {job.status === "queued" ? "Queued..." : "Preview placeholder: waiting for conversion"}
+                </div>
               )}
 
               {job.status === "processing" && (
@@ -145,6 +147,23 @@ export function JobMatrix({
 
               {job.status === "done" && job.output && (
                 <div className="space-y-1">
+                  {job.output.previewUrl && job.type !== "video" && (
+                    <img
+                      src={job.output.previewUrl}
+                      alt="result preview"
+                      className="mb-2 h-20 w-20 rounded border border-slate-300 object-cover"
+                    />
+                  )}
+                  {job.output.previewUrl && job.type === "video" && (
+                    <video
+                      src={job.output.previewUrl}
+                      className="mb-2 h-20 w-28 rounded border border-slate-300 object-cover"
+                      muted
+                      loop
+                      playsInline
+                      autoPlay
+                    />
+                  )}
                   <div className="text-xs text-slate-600">Done</div>
                   <div className="truncate text-xs text-slate-700" title={job.output.primaryPath}>
                     {job.output.primaryPath}

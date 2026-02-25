@@ -2,6 +2,8 @@
   "name": "@pixel/desktop",
   "version": "0.1.0",
   "private": true,
+  "description": "Desktop UI for Pixel Art Engine",
+  "author": "Pixel Art Engine Team",
   "main": "electron/main.cjs",
   "scripts": {
     "build:deps": "npm run build -w @pixel/core && npm run build -w @pixel/queue && npm run build -w @pixel/ffmpeg",
@@ -9,7 +11,28 @@
     "dev:renderer": "vite",
     "dev:electron": "wait-on tcp:5173 && cross-env VITE_DEV_SERVER_URL=http://localhost:5173 electron .",
     "build": "npm run build:deps && vite build",
+    "pack": "npm run build && electron-builder --dir",
+    "dist": "npm run build && electron-builder",
     "typecheck": "tsc --noEmit"
+  },
+  "build": {
+    "appId": "com.pixelart.engine",
+    "productName": "PixelArtEngine",
+    "files": [
+      "**/*",
+      "!src/**/*",
+      "!release/**/*"
+    ],
+    "directories": {
+      "output": "release"
+    },
+    "mac": {
+      "target": [
+        "dmg",
+        "zip"
+      ],
+      "category": "public.app-category.graphics-design"
+    }
   },
   "dependencies": {
     "@pixel/core": "file:../../packages/core",
@@ -26,7 +49,8 @@
     "autoprefixer": "^10.4.20",
     "concurrently": "^9.1.2",
     "cross-env": "^7.0.3",
-    "electron": "^33.2.1",
+    "electron": "33.2.1",
+    "electron-builder": "^25.1.8",
     "postcss": "^8.4.49",
     "tailwindcss": "^3.4.17",
     "typescript": "^5.7.3",

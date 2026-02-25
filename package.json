@@ -11,7 +11,9 @@
     "dev:cli": "npm run dev -w @pixel/cli",
     "build": "npm run build --workspaces --if-present",
     "typecheck": "npm run typecheck --workspaces --if-present",
-    "test": "npm run build && node --test tests/*.test.cjs"
+    "test": "npm run build && node --test tests/*.test.cjs",
+    "pack:desktop": "npm run pack -w @pixel/desktop",
+    "dist:desktop": "npm run dist -w @pixel/desktop"
   },
   "devDependencies": {
     "typescript": "^5.7.3"

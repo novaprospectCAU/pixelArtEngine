@@ -5,3 +5,4 @@ build
 coverage
 *.log
 apps/desktop/dist
+apps/desktop/release

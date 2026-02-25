@@ -6,3 +6,5 @@ coverage
 *.log
 apps/desktop/dist
 apps/desktop/release
+outputs
+apps/desktop/outputs

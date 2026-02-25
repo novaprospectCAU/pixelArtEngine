@@ -1,3 +1,4 @@
+import { useEffect, useState } from "react";
 import type { Job, PixelConfig } from "@pixel/core";
 
 type EditorMode = "global" | "local";
@@ -26,6 +27,36 @@ function FieldNumber({
   step?: number;
   onChange: (value: number) => void;
 }) {
+  const [draft, setDraft] = useState(value === undefined ? "" : String(value));
+
+  useEffect(() => {
+    setDraft(value === undefined ? "" : String(value));
+  }, [value]);
+
+  const commit = (raw: string) => {
+    if (raw.trim() === "") {
+      setDraft(value === undefined ? "" : String(value));
+      return;
+    }
+
+    const parsed = Number(raw);
+    if (!Number.isFinite(parsed)) {
+      setDraft(value === undefined ? "" : String(value));
+      return;
+    }
+
+    let next = parsed;
+    if (typeof min === "number") {
+      next = Math.max(min, next);
+    }
+    if (typeof max === "number") {
+      next = Math.min(max, next);
+    }
+
+    onChange(next);
+    setDraft(String(next));
+  };
+
   return (
     <label className="flex flex-col gap-1 text-xs text-slate-700">
       {label}
@@ -35,8 +66,22 @@ function FieldNumber({
         min={min}
         max={max}
         step={step}
-        value={value ?? ""}
-        onChange={(event) => onChange(Number(event.target.value))}
+        value={draft}
+        onChange={(event) => {
+          const next = event.target.value;
+          setDraft(next);
+
+          if (next.trim() === "" || next === "-" || next === "+") {
+            return;
+          }
+
+          const parsed = Number(next);
+          if (!Number.isFinite(parsed)) {
+            return;
+          }
+          onChange(parsed);
+        }}
+        onBlur={(event) => commit(event.target.value)}
       />
     </label>
   );

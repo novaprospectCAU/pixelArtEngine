@@ -1,6 +1,7 @@
 import { spawn } from "node:child_process";
 import fs from "node:fs/promises";
 import path from "node:path";
+import { pathToFileURL } from "node:url";
 import { promisify } from "node:util";
 import { execFile } from "node:child_process";
 import type { ConvertRequest, ConvertResult, PixelConfig } from "@pixel/core";
@@ -258,6 +259,12 @@ function videoCodecArgs(outputFormat: "mp4" | "webm"): string[] {
   return ["-an", "-c:v", "libx264", "-preset", "veryfast", "-crf", "20", "-pix_fmt", "yuv420p"];
 }
 
+function createPreviewUrl(filePath: string): string {
+  const url = pathToFileURL(filePath);
+  url.searchParams.set("v", String(Date.now()));
+  return url.toString();
+}
+
 export async function convertAssetWithFfmpeg(request: ConvertWithFfmpegOptions): Promise<ConvertResult> {
   const { inputPath, outputDir, signal, onProgress, ffmpegBin, ffprobeBin } = request;
 
@@ -273,7 +280,7 @@ export async function convertAssetWithFfmpeg(request: ConvertWithFfmpegOptions):
     onProgress?.(1);
     return {
       primaryPath,
-      previewUrl: `file://${primaryPath}`
+      previewUrl: createPreviewUrl(primaryPath)
     };
   }
 
@@ -342,7 +349,7 @@ export async function convertAssetWithFfmpeg(request: ConvertWithFfmpegOptions):
     return {
       primaryPath,
       extras: extras.length > 0 ? extras : undefined,
-      previewUrl: `file://${primaryPath}`
+      previewUrl: createPreviewUrl(primaryPath)
     };
   }
 
@@ -356,7 +363,7 @@ export async function convertAssetWithFfmpeg(request: ConvertWithFfmpegOptions):
 
   return {
     primaryPath,
-    previewUrl: `file://${primaryPath}`
+    previewUrl: createPreviewUrl(primaryPath)
   };
 }
 

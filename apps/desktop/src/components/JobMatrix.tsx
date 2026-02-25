@@ -15,8 +15,23 @@ function extractDroppedPaths(event: DragEvent): string[] {
     .filter((value): value is string => Boolean(value));
 }
 
-function toLocalFileUrl(filePath: string): string {
-  return `local-file://open?path=${encodeURIComponent(filePath)}`;
+function toLocalFileUrl(filePath: string, version?: string): string {
+  const base = `local-file://open?path=${encodeURIComponent(filePath)}`;
+  if (!version) {
+    return base;
+  }
+  return `${base}&v=${encodeURIComponent(version)}`;
+}
+
+function readPreviewVersion(previewUrl: string | undefined): string | undefined {
+  if (!previewUrl) {
+    return undefined;
+  }
+  try {
+    return new URL(previewUrl).searchParams.get("v") ?? undefined;
+  } catch {
+    return undefined;
+  }
 }
 
 function InputPreview({ job }: { job: Job }) {
@@ -53,11 +68,13 @@ function OutputPreview({ job }: { job: Job }) {
     );
   }
 
-  const src = toLocalFileUrl(job.output.primaryPath);
+  const version = readPreviewVersion(job.output.previewUrl);
+  const src = toLocalFileUrl(job.output.primaryPath, version);
 
   if (job.type === "video") {
     return (
       <video
+        key={`${job.id}:${version ?? job.output.primaryPath}`}
         src={src}
         className="h-20 w-28 rounded border border-slate-300 object-cover"
         muted
@@ -70,6 +87,7 @@ function OutputPreview({ job }: { job: Job }) {
 
   return (
     <img
+      key={`${job.id}:${version ?? job.output.primaryPath}`}
       src={src}
       alt="output preview"
       className="h-20 w-20 rounded border border-slate-300 object-cover"

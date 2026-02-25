@@ -23,7 +23,7 @@ type JobMatrixProps = {
   onSetConfigMode: (jobId: string, mode: "global" | "local") => void;
   onRemove: (jobId: string) => void;
   onReorder: (dragId: string, targetId: string) => void;
-  onDropFiles: (paths: string[]) => void;
+  onDropFiles: (paths: string[]) => void | Promise<void>;
   onOpenOutput: (outputPath: string) => void;
 };
 
@@ -152,6 +152,22 @@ export function JobMatrix({
                   <button className="btn btn-sm" type="button" onClick={() => onOpenOutput(job.output!.primaryPath)}>
                     Open
                   </button>
+                  {job.output.extras && job.output.extras.length > 0 && (
+                    <div className="space-y-1 pt-1">
+                      <div className="text-[11px] uppercase tracking-wide text-slate-500">Extras</div>
+                      {job.output.extras.map((extraPath) => (
+                        <button
+                          key={extraPath}
+                          className="btn btn-sm block w-full truncate text-left"
+                          type="button"
+                          title={extraPath}
+                          onClick={() => onOpenOutput(extraPath)}
+                        >
+                          {extraPath}
+                        </button>
+                      ))}
+                    </div>
+                  )}
                 </div>
               )}
 

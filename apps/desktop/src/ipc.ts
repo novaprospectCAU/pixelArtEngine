@@ -24,6 +24,7 @@ export type JobEvent =
 export type PixelBridge = {
   pickFiles: () => Promise<string[]>;
   pickOutputDir: () => Promise<string | null>;
+  expandPaths: (paths: string[]) => Promise<string[]>;
   startConversion: (payload: StartConversionPayload) => Promise<string[]>;
   cancel: (jobId?: string) => Promise<boolean>;
   setConcurrency: (count: number) => Promise<number>;

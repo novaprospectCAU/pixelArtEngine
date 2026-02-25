@@ -1,10 +1,26 @@
 const path = require("node:path");
+const fs = require("node:fs/promises");
 const { app, BrowserWindow, dialog, ipcMain, shell } = require("electron");
 const { defaultPixelConfig } = require("@pixel/core");
 const { convertAssetWithFfmpeg } = require("@pixel/ffmpeg");
 const { JobQueue } = require("@pixel/queue");
 
 let mainWindow = null;
+const SUPPORTED_EXTENSIONS = new Set([
+  ".png",
+  ".jpg",
+  ".jpeg",
+  ".webp",
+  ".gif",
+  ".bmp",
+  ".svg",
+  ".mp4",
+  ".mov",
+  ".webm",
+  ".mkv",
+  ".avi",
+  ".m4v"
+]);
 
 const queue = new JobQueue(async ({ payload, signal, reportProgress }) => {
   const config = {
@@ -53,6 +69,56 @@ function createWindow() {
   mainWindow.loadFile(path.join(__dirname, "../dist/index.html"));
 }
 
+function isSupportedAssetPath(filePath) {
+  const ext = path.extname(filePath).toLowerCase();
+  return SUPPORTED_EXTENSIONS.has(ext);
+}
+
+async function expandInputPaths(inputPaths) {
+  const seen = new Set();
+  const files = [];
+
+  async function walk(targetPath) {
+    const resolved = path.resolve(targetPath);
+    if (seen.has(resolved)) {
+      return;
+    }
+    seen.add(resolved);
+
+    let stat;
+    try {
+      stat = await fs.stat(resolved);
+    } catch {
+      return;
+    }
+
+    if (stat.isDirectory()) {
+      let entries = [];
+      try {
+        entries = await fs.readdir(resolved, { withFileTypes: true });
+      } catch {
+        return;
+      }
+
+      entries.sort((a, b) => a.name.localeCompare(b.name));
+      for (const entry of entries) {
+        await walk(path.join(resolved, entry.name));
+      }
+      return;
+    }
+
+    if (stat.isFile() && isSupportedAssetPath(resolved)) {
+      files.push(resolved);
+    }
+  }
+
+  for (const inputPath of inputPaths) {
+    await walk(inputPath);
+  }
+
+  return files;
+}
+
 app.whenReady().then(() => {
   createWindow();
 
@@ -93,6 +159,11 @@ ipcMain.handle("dialog:pickOutputDir", async () => {
   }
 
   return result.filePaths[0];
+});
+
+ipcMain.handle("paths:expand", async (_event, inputPaths) => {
+  const paths = Array.isArray(inputPaths) ? inputPaths : [];
+  return expandInputPaths(paths);
 });
 
 ipcMain.handle("jobs:start", async (_event, payload) => {

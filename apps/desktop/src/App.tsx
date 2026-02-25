@@ -47,11 +47,19 @@ export default function App() {
     });
   }, [applyEvent]);
 
+  const appendPaths = async (paths: string[]) => {
+    if (paths.length === 0) {
+      return;
+    }
+    const expanded = await window.pixel.expandPaths(paths);
+    if (expanded.length > 0) {
+      addPaths(expanded);
+    }
+  };
+
   const handleAddFiles = async () => {
     const paths = await window.pixel.pickFiles();
-    if (paths.length > 0) {
-      addPaths(paths);
-    }
+    await appendPaths(paths);
   };
 
   const handlePickOutput = async () => {
@@ -112,7 +120,7 @@ export default function App() {
             onSetConfigMode={setJobConfigMode}
             onRemove={removeJob}
             onReorder={reorderJobs}
-            onDropFiles={addPaths}
+            onDropFiles={appendPaths}
             onOpenOutput={(targetPath) => window.pixel.openPath(targetPath)}
           />
 

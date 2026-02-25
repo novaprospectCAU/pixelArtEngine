@@ -136,9 +136,9 @@ export function JobMatrix({
       onDragOver={(event) => event.preventDefault()}
       onDrop={handleContainerDrop}
     >
-      <div className="grid grid-cols-2 border-b border-slate-300 text-xs uppercase tracking-wide text-slate-500">
+      <div className="grid grid-cols-[minmax(0,1fr)_minmax(0,1fr)] border-b border-slate-300 text-xs uppercase tracking-wide text-slate-500">
         <div className="px-3 py-2">Input Queue</div>
-        <div className="px-3 py-2">Output Preview / Result</div>
+        <div className="border-l border-slate-300 px-3 py-2">Output Preview / Result</div>
       </div>
 
       <div className="max-h-[68vh] overflow-auto">
@@ -169,49 +169,51 @@ export function JobMatrix({
                 onDropFiles(paths);
               }
             }}
-            className={`grid grid-cols-2 border-b border-slate-200 ${
+            className={`grid grid-cols-[minmax(0,1fr)_minmax(0,1fr)] border-b border-slate-200 ${
               selectedJobId === job.id ? "bg-emerald-50/80" : "bg-white/10"
             }`}
           >
-            <div className="flex items-start gap-2 px-3 py-3">
-              <span className="cursor-grab pt-1 text-slate-400" title="Drag to reorder">
-                ::
-              </span>
+            <div className="min-w-0 overflow-hidden px-3 py-3">
+              <div className="flex items-start gap-2">
+                <span className="cursor-grab pt-1 text-slate-400" title="Drag to reorder">
+                  ::
+                </span>
 
-              <input
-                type="checkbox"
-                checked={job.enabled}
-                onChange={() => onToggleEnabled(job.id)}
-                title="Include / exclude"
-              />
+                <input
+                  type="checkbox"
+                  checked={job.enabled}
+                  onChange={() => onToggleEnabled(job.id)}
+                  title="Include / exclude"
+                />
 
-              <button className="flex-1 text-left" type="button" onClick={() => onSelect(job.id)}>
-                <div className="flex items-start gap-3">
-                  <InputPreview job={job} />
-                  <div className="min-w-0">
-                    <div className="truncate text-sm font-medium text-slate-800">{formatLabel(job.inputPath)}</div>
-                    <div className="mt-1 text-xs text-slate-500">
-                      {job.type} | {statusLabel(job)} | {job.configMode}
+                <button className="min-w-0 flex-1 text-left" type="button" onClick={() => onSelect(job.id)}>
+                  <div className="flex items-start gap-3">
+                    <InputPreview job={job} />
+                    <div className="min-w-0">
+                      <div className="truncate text-sm font-medium text-slate-800">{formatLabel(job.inputPath)}</div>
+                      <div className="mt-1 text-xs text-slate-500">
+                        {job.type} | {statusLabel(job)} | {job.configMode}
+                      </div>
                     </div>
                   </div>
-                </div>
-              </button>
+                </button>
 
-              <div className="flex items-center gap-1">
-                <button
-                  className="btn btn-sm"
-                  type="button"
-                  onClick={() => onSetConfigMode(job.id, job.configMode === "global" ? "local" : "global")}
-                >
-                  {job.configMode === "global" ? "Use Local" : "Use Global"}
-                </button>
-                <button className="btn btn-sm" type="button" onClick={() => onRemove(job.id)}>
-                  Remove
-                </button>
+                <div className="flex shrink-0 items-center gap-1">
+                  <button
+                    className="btn btn-sm"
+                    type="button"
+                    onClick={() => onSetConfigMode(job.id, job.configMode === "global" ? "local" : "global")}
+                  >
+                    {job.configMode === "global" ? "Use Local" : "Use Global"}
+                  </button>
+                  <button className="btn btn-sm" type="button" onClick={() => onRemove(job.id)}>
+                    Remove
+                  </button>
+                </div>
               </div>
             </div>
 
-            <div className="px-3 py-3">
+            <div className="min-w-0 overflow-hidden border-l border-slate-200 px-3 py-3">
               {(job.status === "idle" || job.status === "queued") && (
                 <div className="rounded-md border border-dashed border-slate-300 bg-slate-50 p-3 text-xs text-slate-500">
                   {job.status === "queued" ? "Queued..." : "Preview placeholder: waiting for conversion"}

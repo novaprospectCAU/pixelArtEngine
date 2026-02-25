@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 const path = require("node:path");
-const { convertAsset, detectAssetType, defaultPixelConfig } = require("@pixel/core");
+const { detectAssetType, defaultPixelConfig } = require("@pixel/core");
+const { convertAssetWithFfmpeg } = require("@pixel/ffmpeg");
 
 function parseArgs(argv) {
   const [inputPath, ...rest] = argv;
@@ -28,7 +29,7 @@ async function main() {
   const type = detectAssetType(resolvedInput);
 
   console.log(`Converting ${resolvedInput}`);
-  const result = await convertAsset({
+  const result = await convertAssetWithFfmpeg({
     inputPath: resolvedInput,
     outputDir,
     type,

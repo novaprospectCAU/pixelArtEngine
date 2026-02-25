@@ -3,7 +3,7 @@
 ## Product Shape (P0 Baseline)
 - Desktop app: Electron + Vite + React + Zustand + Tailwind
 - Shared Core: TypeScript packages used by Desktop and CLI
-- Local media pipeline: ffmpeg wrapper in main process
+- Local media pipeline: ffmpeg wrapper for image/video conversion in Desktop and CLI
 
 ## UX Spec (Locked)
 ### Layout

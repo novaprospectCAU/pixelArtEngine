@@ -6,11 +6,12 @@
     "pixel-cli": "src/index.cjs"
   },
   "scripts": {
-    "build:deps": "npm run build -w @pixel/core",
+    "build:deps": "npm run build -w @pixel/core && npm run build -w @pixel/ffmpeg",
     "dev": "npm run build:deps && node src/index.cjs",
     "build": "npm run build:deps"
   },
   "dependencies": {
-    "@pixel/core": "file:../../packages/core"
+    "@pixel/core": "file:../../packages/core",
+    "@pixel/ffmpeg": "file:../../packages/ffmpeg"
   }
 }

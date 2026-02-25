@@ -13,6 +13,8 @@ npm install
 npm run dev:desktop
 ```
 
+Local `ffmpeg`/`ffprobe` binaries must be available in `PATH`.
+
 CLI (single file):
 ```bash
 npm run dev:cli -- ./sample/input.png --out ./outputs
@@ -29,6 +31,6 @@ npm run dev:cli -- ./sample/input.png --out ./outputs
 - Desktop UI has 2-column row-matched queue/result rendering.
 - Drag/drop, reorder, include/exclude, global/per-item config editing are wired.
 - IPC + queue + progress events are connected.
-- Core conversion currently uses placeholder copy flow for end-to-end wiring.
+- Core conversion path is wired to local ffmpeg for image/video processing and queue progress events.
 
 See [CODEX.md](./CODEX.md) for full implementation spec and tickets.

@@ -1,6 +1,7 @@
 const path = require("node:path");
 const { app, BrowserWindow, dialog, ipcMain, shell } = require("electron");
-const { convertAsset, defaultPixelConfig } = require("@pixel/core");
+const { defaultPixelConfig } = require("@pixel/core");
+const { convertAssetWithFfmpeg } = require("@pixel/ffmpeg");
 const { JobQueue } = require("@pixel/queue");
 
 let mainWindow = null;
@@ -11,7 +12,7 @@ const queue = new JobQueue(async ({ payload, signal, reportProgress }) => {
     ...payload.job.config
   };
 
-  return convertAsset({
+  return convertAssetWithFfmpeg({
     inputPath: payload.job.inputPath,
     type: payload.job.type,
     config,

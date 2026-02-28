@@ -1,5 +1,7 @@
 import { spawn } from "node:child_process";
+import { randomUUID } from "node:crypto";
 import fs from "node:fs/promises";
+import os from "node:os";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 import { promisify } from "node:util";
@@ -241,6 +243,29 @@ export async function probeDurationSeconds(inputPath: string, options: FfprobeOp
   return duration;
 }
 
+async function probeImageDimensions(inputPath: string, options: FfprobeOptions = {}): Promise<{ width: number; height: number }> {
+  const ffprobeBin = options.ffprobeBin ?? "ffprobe";
+  const { stdout } = await execFileAsync(ffprobeBin, [
+    "-v",
+    "error",
+    "-select_streams",
+    "v:0",
+    "-show_entries",
+    "stream=width,height",
+    "-of",
+    "csv=p=0:s=x",
+    inputPath
+  ]);
+
+  const [widthText, heightText] = stdout.trim().split("x");
+  const width = Number.parseInt(widthText, 10);
+  const height = Number.parseInt(heightText, 10);
+  if (!Number.isFinite(width) || !Number.isFinite(height) || width <= 0 || height <= 0) {
+    throw new Error(`Failed to probe image dimensions for ${inputPath}`);
+  }
+  return { width, height };
+}
+
 function parseOutTimeMs(line: string): number | null {
   const match = line.match(/^out_time_ms=(\d+)$/);
   if (!match) {
@@ -265,6 +290,15 @@ function createPreviewUrl(filePath: string): string {
   return url.toString();
 }
 
+function buildEmbeddedRasterSvg(width: number, height: number, pngBase64: string): string {
+  return [
+    `<?xml version="1.0" encoding="UTF-8"?>`,
+    `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}" shape-rendering="crispEdges">`,
+    `<image width="${width}" height="${height}" href="data:image/png;base64,${pngBase64}" style="image-rendering:pixelated" />`,
+    `</svg>`
+  ].join("");
+}
+
 export async function convertAssetWithFfmpeg(request: ConvertWithFfmpegOptions): Promise<ConvertResult> {
   const { inputPath, outputDir, signal, onProgress, ffmpegBin, ffprobeBin } = request;
 
@@ -274,15 +308,6 @@ export async function convertAssetWithFfmpeg(request: ConvertWithFfmpegOptions):
   const outputFormat = formatOutputByType(request.type, request.config);
   const primaryPath = path.join(outputDir, `${base}_pixel.${outputFormat}`);
   const extras: string[] = [];
-
-  if (request.type === "svg" && outputFormat === "svg") {
-    await fs.copyFile(inputPath, primaryPath);
-    onProgress?.(1);
-    return {
-      primaryPath,
-      previewUrl: createPreviewUrl(primaryPath)
-    };
-  }
 
   if (request.type === "video") {
     const durationSeconds = await probeDurationSeconds(inputPath, { ffprobeBin }).catch(() => 0);
@@ -354,12 +379,35 @@ export async function convertAssetWithFfmpeg(request: ConvertWithFfmpegOptions):
   }
 
   const filterSpec = buildFilterSpec(request.config, false);
-  onProgress?.(0.1);
-  await runFfmpeg(["-y", "-i", inputPath, ...filterSpec.args, primaryPath], {
-    ffmpegBin,
-    signal
-  });
-  onProgress?.(1);
+  if (outputFormat === "svg") {
+    const tempPngPath = path.join(os.tmpdir(), `pixel-svg-${randomUUID()}.png`);
+    try {
+      onProgress?.(0.1);
+      await runFfmpeg(["-y", "-i", inputPath, ...filterSpec.args, tempPngPath], {
+        ffmpegBin,
+        signal
+      });
+      onProgress?.(0.7);
+
+      const [{ width, height }, pngBuffer] = await Promise.all([
+        probeImageDimensions(tempPngPath, { ffprobeBin }),
+        fs.readFile(tempPngPath)
+      ]);
+
+      const svg = buildEmbeddedRasterSvg(width, height, pngBuffer.toString("base64"));
+      await fs.writeFile(primaryPath, svg, "utf8");
+      onProgress?.(1);
+    } finally {
+      await fs.rm(tempPngPath, { force: true });
+    }
+  } else {
+    onProgress?.(0.1);
+    await runFfmpeg(["-y", "-i", inputPath, ...filterSpec.args, primaryPath], {
+      ffmpegBin,
+      signal
+    });
+    onProgress?.(1);
+  }
 
   return {
     primaryPath,

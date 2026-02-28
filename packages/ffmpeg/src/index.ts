@@ -6,6 +6,7 @@ import path from "node:path";
 import { pathToFileURL } from "node:url";
 import { promisify } from "node:util";
 import { execFile } from "node:child_process";
+import { Resvg } from "@resvg/resvg-js";
 import type { ConvertRequest, ConvertResult, PixelConfig } from "@pixel/core";
 
 const execFileAsync = promisify(execFile);
@@ -299,6 +300,17 @@ function buildEmbeddedRasterSvg(width: number, height: number, pngBase64: string
   ].join("");
 }
 
+async function rasterizeSvgInputToPng(inputSvgPath: string, outputPngPath: string): Promise<void> {
+  const svgData = await fs.readFile(inputSvgPath);
+  const resvg = new Resvg(svgData, {
+    fitTo: {
+      mode: "original"
+    }
+  });
+  const rendered = resvg.render();
+  await fs.writeFile(outputPngPath, rendered.asPng());
+}
+
 export async function convertAssetWithFfmpeg(request: ConvertWithFfmpegOptions): Promise<ConvertResult> {
   const { inputPath, outputDir, signal, onProgress, ffmpegBin, ffprobeBin } = request;
 
@@ -379,11 +391,23 @@ export async function convertAssetWithFfmpeg(request: ConvertWithFfmpegOptions):
   }
 
   const filterSpec = buildFilterSpec(request.config, false);
-  if (outputFormat === "svg") {
-    const tempPngPath = path.join(os.tmpdir(), `pixel-svg-${randomUUID()}.png`);
-    try {
+  const tempArtifacts: string[] = [];
+  let ffmpegInputPath = inputPath;
+
+  try {
+    if (request.type === "svg") {
+      const rasterizedSvgInputPath = path.join(os.tmpdir(), `pixel-svg-input-${randomUUID()}.png`);
+      tempArtifacts.push(rasterizedSvgInputPath);
+      await rasterizeSvgInputToPng(inputPath, rasterizedSvgInputPath);
+      ffmpegInputPath = rasterizedSvgInputPath;
+    }
+
+    if (outputFormat === "svg") {
+      const tempPngPath = path.join(os.tmpdir(), `pixel-svg-output-${randomUUID()}.png`);
+      tempArtifacts.push(tempPngPath);
+
       onProgress?.(0.1);
-      await runFfmpeg(["-y", "-i", inputPath, ...filterSpec.args, tempPngPath], {
+      await runFfmpeg(["-y", "-i", ffmpegInputPath, ...filterSpec.args, tempPngPath], {
         ffmpegBin,
         signal
       });
@@ -397,16 +421,16 @@ export async function convertAssetWithFfmpeg(request: ConvertWithFfmpegOptions):
       const svg = buildEmbeddedRasterSvg(width, height, pngBuffer.toString("base64"));
       await fs.writeFile(primaryPath, svg, "utf8");
       onProgress?.(1);
-    } finally {
-      await fs.rm(tempPngPath, { force: true });
+    } else {
+      onProgress?.(0.1);
+      await runFfmpeg(["-y", "-i", ffmpegInputPath, ...filterSpec.args, primaryPath], {
+        ffmpegBin,
+        signal
+      });
+      onProgress?.(1);
     }
-  } else {
-    onProgress?.(0.1);
-    await runFfmpeg(["-y", "-i", inputPath, ...filterSpec.args, primaryPath], {
-      ffmpegBin,
-      signal
-    });
-    onProgress?.(1);
+  } finally {
+    await Promise.all(tempArtifacts.map((artifactPath) => fs.rm(artifactPath, { force: true })));
   }
 
   return {
